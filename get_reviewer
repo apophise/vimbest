@@ -1,0 +1,102 @@
+#!/bin/env python2
+#coding:utf-8
+
+import fnmatch
+import sys
+import os
+import subprocess
+
+def PRINT(str):
+  # print(str)
+  pass
+
+def getRootDir():
+  """返回项目Root目录
+  """
+  return subprocess.Popen("git rev-parse --show-toplevel", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()
+
+def isPatternMatch(filename, pattern):
+  """判断文件名和模式是否匹配
+  """
+  if fnmatch.fnmatch(filename, pattern):
+    return True
+  return False
+
+def matchLine(line, filename):
+  """根据行规则返回匹配到的负责人和备选人列表
+
+如果匹配成功，则返回两个元素的数组，第一个是负责人的名字，第二个是备选
+人数组。
+  """
+  parts = line.split(':')
+  if isPatternMatch(filename, parts[0]):
+    owner = parts[1]
+    backups = parts[2]
+    return [owner, backups.split(',')]
+  return None
+
+def findOwnerFromFile(ownersFilename, reviewFilename):
+  """查询指定review文件的Owner人员
+reviewFilename是相对项目Root的相对路径
+  """
+  try:
+    with open(ownersFilename) as f:
+      for line in f:
+        result = None
+        if not str.startswith(line, '#'):
+          result = matchLine(line.strip(), reviewFilename)
+        if result:
+          return result
+  except Exception:
+    return None
+  return None
+
+def findOwner(filename):
+  """查找某个文件的Owner
+
+1. 传入的filename需要时绝对路径
+
+  Arguments:
+  - `filename`: 绝对路径地址
+  """
+  rootDir = getRootDir()
+  checkDir = os.path.relpath(os.path.dirname(filename), rootDir)
+  while True:
+    os.chdir(os.path.join(rootDir, checkDir))
+    PRINT("{0} : {1}".format(checkDir, os.path.relpath(filename)))
+    result = findOwnerFromFile("OWNERS", os.path.relpath(filename))
+    if result:
+      return result
+    if checkDir:
+      checkDir = os.path.dirname(checkDir)
+    else:
+      break
+
+def main():
+  # whoami = subprocess.Popen("dtalk who", shell=True, stdout=subprocess.PIPE).communicate()[0].strip()
+  whoami = "林胜"
+  res={}
+  backup={}
+  for filename in sys.argv[1:]:
+    result = findOwner(os.path.join(getRootDir(), filename))
+    if result:
+      key = result[0] == whoami and result[1][0] or result[0]
+      b_key = result[1][0]
+      if not res.has_key(key):
+        res[key] = []
+      if not backup.has_key(b_key):
+        backup[b_key] = []
+      backup[b_key] += [filename]
+      res[key] += [filename];
+  for name in res:
+    print name
+    for f in set(res[name]):
+      print f
+  print '==== backup ===='
+  for name in backup:
+    print name
+    for f in set(backup[name]):
+      print f
+
+if __name__ == '__main__':
+  main()
